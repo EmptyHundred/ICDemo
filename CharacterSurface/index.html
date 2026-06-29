@@ -8,10 +8,49 @@
 </head>
 <body>
   <canvas id="stage"></canvas>
-  <button id="toggle" title="Show / hide controls">≡</button>
+  <button id="toggle" title="Options">≡</button>
+  <div id="options" class="hidden">
+    <div class="opt-head">
+      <span>Options</span>
+      <button id="opt-close" title="Close">×</button>
+    </div>
+    <label class="opt-row">
+      <span>Spin speed</span>
+      <input id="opt-speed" type="range" min="0" max="1.2" step="0.01" />
+      <output id="opt-speed-val"></output>
+    </label>
+    <label class="opt-row">
+      <span>Flight time</span>
+      <input id="opt-flight" type="range" min="400" max="3500" step="50" />
+      <output id="opt-flight-val"></output>
+    </label>
+    <label class="opt-row">
+      <span>Out bounce</span>
+      <input id="opt-outbounce" type="range" min="0" max="2.5" step="0.05" />
+      <output id="opt-outbounce-val"></output>
+    </label>
+    <label class="opt-row">
+      <span>In bounce</span>
+      <input id="opt-inbounce" type="range" min="0" max="2" step="0.05" />
+      <output id="opt-inbounce-val"></output>
+    </label>
+    <label class="opt-row">
+      <span>Chars per wave</span>
+      <input id="opt-wave" type="range" min="1" max="60" step="1" />
+      <output id="opt-wave-val"></output>
+    </label>
+    <label class="opt-check">
+      <input id="opt-trace" type="checkbox" checked />
+      <span>Show traces</span>
+    </label>
+    <label class="opt-check">
+      <input id="opt-textbox" type="checkbox" checked />
+      <span>Show source bar</span>
+    </label>
+  </div>
   <div id="panel">
-    <textarea id="text" spellcheck="false">Our introductory fiction class guides students through the process of writing a short story. No prior writing experience is necessary. Through daily writing assignments and class meetings, students will learn about the key building blocks of fiction—language, character, and plot—and will each complete their own short story by the end of the course. In addition to submitting daily assignments, students will meet several times as a group with our instructors and have the opportunity to ask questions during office hours. Students will also meet individually with an editor and editorial assistant to discuss their own short stories, and will not only receive written feedback on their first drafts and final stories, but on all daily assignments.</textarea>
-    <button id="run" class="btn">Animate</button>
+    <div id="source-bar" class="source-bar"></div>
+    <button id="animate-btn" class="animate-btn">Animate</button>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

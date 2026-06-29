@@ -34,14 +34,15 @@ html, body {
   border: 1px solid #e3d3d1; border-radius: 20px;
   font-size: 14px; font-family: inherit; font-weight: 600; color: #8a6f6d;
   background: rgba(255,255,255,.85); cursor: pointer; white-space: nowrap;
-  transition: background .2s ease, color .2s ease, border-color .2s ease;
+  opacity: 1; transform: scale(1);
+  transition: background .2s ease, color .2s ease, border-color .2s ease,
+    opacity .35s ease, transform .35s ease;
 }
 .source-btn:hover { border-color: #d98a86; color: #4a3a39; }
 .source-btn:active { transform: scale(.96); }
 .source-btn:disabled { opacity: .6; cursor: default; }
-.source-btn.active {
-  background: #efd9d7; color: #4a3a39; border-color: #d98a86;
-}
+/* fade/scale state used when a button is added to or removed from the bar */
+.source-btn.faded { opacity: 0; transform: scale(.8); }
 .animate-btn {
   flex: none; height: 40px; padding: 0 20px;
   border: none; border-radius: 20px;

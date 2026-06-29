@@ -13,14 +13,22 @@ const FLIGHT_GLSL = /* glsl */ `
   uniform float uInBounce;  // multiplier on the overshoot landing on the sphere
   uniform float uWaveSize;  // how many glyphs launch together per wave
   uniform float uWaveGap;   // ms between successive waves
+  uniform float uMorph;     // 0 = clustered at the button, 1 = full paragraph
 
   attribute vec3 aSource;   // flat paragraph position (world)
+  attribute vec3 aAnchor;   // button position glyphs collapse to / expand from
   attribute vec3 aSphere;   // unit position on the sphere
   attribute float aRadius;  // distance from centre to the landing point
   attribute float aIndex;   // sequential position in the paragraph
   attribute float aJitter;  // 0..1 per-glyph timing jitter within its wave
   attribute float aCurve;   // signed bow of its trace
   attribute float aPull;    // per-glyph anticipation / overshoot strength
+
+  // resting position before flight: morphs between the button anchor (a single
+  // point, glyphs gathered = the "button") and the spread-out paragraph layout
+  vec3 restPos() {
+    return mix(aAnchor, aSource, smoothstep(0.0, 1.0, uMorph));
+  }
 
   // current landing target after spin + tilt. aSphere is a unit direction;
   // rotation preserves its length, so scaling by aRadius places the glyph at
@@ -61,17 +69,18 @@ const FLIGHT_GLSL = /* glsl */ `
     return (q * q * ((c2 + 1.0) * q + c2) + 2.0) * 0.5;
   }
 
-  // quadratic bezier position at param p, source -> bowed control -> target
+  // quadratic bezier position at param p, rest -> bowed control -> target
   vec3 flightAt(vec3 target, float p) {
-    vec3 mid = mix(aSource, target, 0.5);
-    vec3 d = target - aSource;
+    vec3 origin = restPos();
+    vec3 mid = mix(origin, target, 0.5);
+    vec3 d = target - origin;
     float len = length(d);
     vec3 dir = len > 0.0001 ? d / len : vec3(0.0, 1.0, 0.0);
     vec3 ref = abs(dir.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     vec3 perp = normalize(cross(dir, ref));
     vec3 ctrl = mid + perp * (len * aCurve * 0.45);
     float u = 1.0 - p;
-    return u * u * aSource + 2.0 * u * p * ctrl + p * p * target;
+    return u * u * origin + 2.0 * u * p * ctrl + p * p * target;
   }
 `;
 
@@ -88,6 +97,7 @@ export const GLYPH_VERT = FLIGHT_GLSL + /* glsl */ `
   varying float vDepth;
   varying vec3 vColor;
   varying float vTint;      // 0 = original ink, 1 = full surface colour
+  varying float vFade;      // glyph opacity (fades while collapsed into a button)
 
   void main() {
     vec3 target = sphereTarget();
@@ -105,6 +115,9 @@ export const GLYPH_VERT = FLIGHT_GLSL + /* glsl */ `
     vColor = aColor;
     // ease the tint in over the flight so the colour "arrives" with the glyph
     vTint = uColorize * smoothstep(0.0, 1.0, p);
+    // while morphed toward the button anchor (uMorph→0) glyphs pile up; fade
+    // them so the cluster dissolves into the button instead of a messy blob
+    vFade = smoothstep(0.0, 0.5, uMorph);
   }
 `;
 
@@ -118,6 +131,7 @@ export const GLYPH_FRAG = /* glsl */ `
   varying float vDepth;
   varying vec3 vColor;
   varying float vTint;
+  varying float vFade;
 
   void main() {
     vec4 tex = texture2D(uTex, vUv);
@@ -127,7 +141,7 @@ export const GLYPH_FRAG = /* glsl */ `
     float alpha = 0.45 + (1.0 - dN) * 0.55;        // far = faint
     // transition from the original near-black ink to the model surface colour
     vec3 rgb = mix(vec3(ink), vColor, vTint);
-    gl_FragColor = vec4(rgb, tex.a * alpha);
+    gl_FragColor = vec4(rgb, tex.a * alpha * vFade);
   }
 `;
 

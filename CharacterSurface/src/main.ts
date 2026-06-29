@@ -61,6 +61,28 @@ function fitCamera(): void {
   uniforms.uDepthMax.value = CAM_DIST + SPHERE_R;
 }
 
+// Unproject a screen pixel onto the z=0 plane (where the paragraph lives), so a
+// DOM button's centre maps to a world point the glyphs can gather into.
+function screenToWorld(clientX: number, clientY: number): THREE.Vector3 {
+  const ndc = new THREE.Vector3(
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1,
+    0.5,
+  );
+  ndc.unproject(camera);
+  const dir = ndc.sub(camera.position).normalize();
+  const t = -camera.position.z / dir.z;          // intersect z = 0 plane
+  return camera.position.clone().add(dir.multiplyScalar(t));
+}
+
+// world anchor for a source button (its on-screen centre); falls back to a
+// point just below the sphere when the button isn't laid out yet
+function buttonAnchor(btn?: HTMLButtonElement | null): THREE.Vector3 {
+  if (!btn) return new THREE.Vector3(0, -1.6, 0);
+  const r = btn.getBoundingClientRect();
+  return screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
+}
+
 let reflowTimer = 0;
 function resize(): void {
   const w = window.innerWidth;
@@ -104,14 +126,24 @@ const uniforms = {
   uWaveGap: { value: WAVE_GAP },
   uSphereR: { value: SPHERE_R },
   uColorize: { value: 0 },
+  uMorph: { value: 1 },              // 1 = full paragraph, 0 = collapsed to button
   uGlyphSize: { value: GLYPH_WORLD },
   uTex: { value: null as THREE.Texture | null },
   uDepthMin: { value: CAM_DIST - SPHERE_R },
   uDepthMax: { value: CAM_DIST + SPHERE_R },
 };
 
-let glyphMesh: THREE.Mesh | null = null;
-let traceLines: THREE.LineSegments | null = null;
+// A self-contained set of glyphs (+ traces) for ONE paragraph. Each layer owns
+// its morph/texture/colorize uniforms but SHARES time/rotation/sliders with the
+// others, so two layers can collapse and expand simultaneously during a swap.
+interface Layer {
+  glyph: THREE.Mesh;
+  trace: THREE.LineSegments;
+  uMorph: { value: number };
+  tex: THREE.Texture;
+}
+let currentLayer: Layer | null = null;
+
 let startTime = performance.now();
 // when false, time is frozen at 0 so glyphs rest in their readable paragraph
 // layout (a static preview); the Animate button flips this on to start flight
@@ -127,17 +159,14 @@ const settings = {
   showTraces: true,      // draw the red flight trails
 };
 
-function disposeCurrent(): void {
-  for (const obj of [glyphMesh, traceLines]) {
-    if (!obj) continue;
+function disposeLayer(layer: Layer | null): void {
+  if (!layer) return;
+  for (const obj of [layer.glyph, layer.trace]) {
     scene.remove(obj);
     obj.geometry.dispose();
     (obj.material as THREE.Material).dispose();
   }
-  glyphMesh = null;
-  traceLines = null;
-  const tex = uniforms.uTex.value;
-  if (tex) tex.dispose();
+  layer.tex.dispose();
 }
 
 interface CharLayout {
@@ -237,15 +266,20 @@ function layout(text: string, makeTargets?: (count: number) => SurfaceSample[]):
   });
 }
 
-function build(text: string): void {
-  disposeCurrent();
-  currentText = text;
-  // When a model is loaded, sample its surface for evenly-distributed landing
-  // points; otherwise the layout falls back to Fibonacci points on the sphere.
+// Build a self-contained Layer for `text`, landing on the current target
+// (sphere or loaded model), gathered at `anchor`. `morphStart` seeds the
+// layer's private morph value. Shares time/rotation/slider uniforms via spread
+// (the spread copies the {value} object references), but gets its own morph,
+// texture and colorize so layers animate independently.
+function makeLayer(text: string, anchor: THREE.Vector3, morphStart: number): Layer {
   const model = loadedModel;
   const chars = layout(text || " ",
     model ? (count) => sampleSurfacePoints(model, count) : undefined);
   const n = chars.length;
+
+  const anchorPt = anchor;
+  const uMorph = { value: morphStart };
+  const uColorize = { value: model ? 1 : 0 };
 
   // measure how wide/tall everything reaches (sphere + paragraph) so the
   // camera can frame it all, then refit — this keeps the text on-screen on
@@ -261,14 +295,14 @@ function build(text: string): void {
   contentBounds.bottom = bottom;
   fitCamera();
 
-  // glyphs only adopt a surface colour when a model is the target
-  uniforms.uColorize.value = model ? 1 : 0;
-
   const atlas = buildGlyphAtlas(text || " ");
-  uniforms.uTex.value = atlas.texture;
+  const tex = atlas.texture;
+  // per-layer uniform set: shared holders + this layer's private ones
+  const layerUniforms = { ...uniforms, uMorph, uColorize, uTex: { value: tex } };
 
   // per-instance attribute buffers, filled once
   const aSource = new Float32Array(n * 3);
+  const aAnchor = new Float32Array(n * 3);
   const aSphere = new Float32Array(n * 3);
   const aRadius = new Float32Array(n);
   const aColor = new Float32Array(n * 3);
@@ -278,8 +312,16 @@ function build(text: string): void {
   const aCurve = new Float32Array(n);
   const aPull = new Float32Array(n);
 
+  // tight scatter around the anchor so the collapsed cluster reads as a small
+  // button-sized blob rather than a single stacked point
+  const SCATTER = GLYPH_WORLD * 1.5;
   chars.forEach((c, i) => {
     aSource.set([c.source.x, c.source.y, c.source.z], i * 3);
+    aAnchor.set([
+      anchorPt.x + (Math.random() * 2 - 1) * SCATTER,
+      anchorPt.y + (Math.random() * 2 - 1) * SCATTER,
+      anchorPt.z,
+    ], i * 3);
     aSphere.set([c.sphere.x, c.sphere.y, c.sphere.z], i * 3);
     aRadius[i] = c.radius;
     aColor.set([c.color.r, c.color.g, c.color.b], i * 3);
@@ -302,6 +344,7 @@ function build(text: string): void {
   ], 2));
   quad.setIndex([0, 1, 2, 2, 1, 3]);
   quad.setAttribute("aSource", new THREE.InstancedBufferAttribute(aSource, 3));
+  quad.setAttribute("aAnchor", new THREE.InstancedBufferAttribute(aAnchor, 3));
   quad.setAttribute("aSphere", new THREE.InstancedBufferAttribute(aSphere, 3));
   quad.setAttribute("aRadius", new THREE.InstancedBufferAttribute(aRadius, 1));
   quad.setAttribute("aColor", new THREE.InstancedBufferAttribute(aColor, 3));
@@ -312,19 +355,20 @@ function build(text: string): void {
   quad.setAttribute("aPull", new THREE.InstancedBufferAttribute(aPull, 1));
 
   const glyphMat = new THREE.ShaderMaterial({
-    uniforms,
+    uniforms: layerUniforms,
     vertexShader: GLYPH_VERT,
     fragmentShader: GLYPH_FRAG,
     transparent: true,
     depthWrite: false,
   });
-  glyphMesh = new THREE.Mesh(quad, glyphMat);
-  glyphMesh.frustumCulled = false;
-  scene.add(glyphMesh);
+  const glyph = new THREE.Mesh(quad, glyphMat);
+  glyph.frustumCulled = false;
+  scene.add(glyph);
 
   // ---- trace geometry: a polyline per glyph, expanded to line segments ----
   const segVerts = TRACE_SEGMENTS * 2;       // 2 endpoints per segment
   const tSource = new Float32Array(n * segVerts * 3);
+  const tAnchor = new Float32Array(n * segVerts * 3);
   const tSphere = new Float32Array(n * segVerts * 3);
   const tRadius = new Float32Array(n * segVerts);
   const tIndex = new Float32Array(n * segVerts);
@@ -336,6 +380,7 @@ function build(text: string): void {
   for (let i = 0; i < n; i++) {
     const c = chars[i];
     const r = c.radius;
+    const ax = aAnchor[i * 3], ay = aAnchor[i * 3 + 1], az = aAnchor[i * 3 + 2];
     for (let s = 0; s < TRACE_SEGMENTS; s++) {
       const s0 = s / TRACE_SEGMENTS;
       const s1 = (s + 1) / TRACE_SEGMENTS;
@@ -343,6 +388,7 @@ function build(text: string): void {
       for (let e = 0; e < 2; e++) {
         const v = base + e;
         tSource.set([c.source.x, c.source.y, c.source.z], v * 3);
+        tAnchor.set([ax, ay, az], v * 3);
         tSphere.set([c.sphere.x, c.sphere.y, c.sphere.z], v * 3);
         tRadius[v] = r;
         tIndex[v] = c.order;
@@ -357,6 +403,7 @@ function build(text: string): void {
   const traceGeo = new THREE.BufferGeometry();
   traceGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(n * segVerts * 3), 3));
   traceGeo.setAttribute("aSource", new THREE.Float32BufferAttribute(tSource, 3));
+  traceGeo.setAttribute("aAnchor", new THREE.Float32BufferAttribute(tAnchor, 3));
   traceGeo.setAttribute("aSphere", new THREE.Float32BufferAttribute(tSphere, 3));
   traceGeo.setAttribute("aRadius", new THREE.Float32BufferAttribute(tRadius, 1));
   traceGeo.setAttribute("aIndex", new THREE.Float32BufferAttribute(tIndex, 1));
@@ -366,26 +413,53 @@ function build(text: string): void {
   traceGeo.setAttribute("aS", new THREE.Float32BufferAttribute(tS, 1));
 
   const traceMat = new THREE.ShaderMaterial({
-    uniforms,
+    uniforms: layerUniforms,
     vertexShader: TRACE_VERT,
     fragmentShader: TRACE_FRAG,
     transparent: true,
     depthWrite: false,
   });
-  traceLines = new THREE.LineSegments(traceGeo, traceMat);
-  traceLines.frustumCulled = false;
-  traceLines.visible = settings.showTraces;
-  scene.add(traceLines);
+  const trace = new THREE.LineSegments(traceGeo, traceMat);
+  trace.frustumCulled = false;
+  trace.visible = settings.showTraces;
+  scene.add(trace);
 
-  // rebuilding drops back to the static preview; Animate starts the flight
+  return { glyph, trace, uMorph, tex };
+}
+
+// Replace the current layer with a freshly built one (the common, single-layer
+// path). `anchor` is where glyphs gather; default just below the sphere.
+function build(text: string, anchor?: THREE.Vector3): void {
+  disposeLayer(currentLayer);
+  currentText = text;
+  currentLayer = makeLayer(text, anchor ?? new THREE.Vector3(0, -1.6, 0), 1);
+  // rebuilding drops back to the static preview; Figuration starts the flight
   animating = false;
   startTime = performance.now();
 }
 
-// begin the flight animation from the current paragraph layout
+// begin the figuration flight from the current paragraph layout
 function startAnimation(): void {
   animating = true;
   startTime = performance.now();
+}
+
+// Tween a layer's morph holder between values over `ms` (0 = collapsed into a
+// button, 1 = full paragraph). Each call drives its own holder, so two layers
+// can morph simultaneously.
+function morphHolder(holder: { value: number }, target: number, ms: number): Promise<void> {
+  const from = holder.value;
+  const t0 = performance.now();
+  return new Promise((resolve) => {
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / ms);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; // easeInOut
+      holder.value = from + (target - from) * e;
+      if (k < 1) { requestAnimationFrame(step); }
+      else { holder.value = target; resolve(); }
+    };
+    requestAnimationFrame(step);
+  });
 }
 
 // ---- drag-to-rotate state ----
@@ -502,10 +576,10 @@ waveSlider.addEventListener("input", () => {
 toggleButton.addEventListener("click", () => options.classList.toggle("hidden"));
 closeButton.addEventListener("click", () => options.classList.add("hidden"));
 
-// ---- source selector: Sphere | <each model folder> | … (custom) ----
+// ---- sources: Sphere (built-in) + one per model folder ----
 // Vite statically discovers every model folder under /models at build time:
 // model.glb gives the 3D surface, desc.txt gives the paragraph. Drop a new
-// folder with those two files in and it appears in the list automatically.
+// folder with those two files in and it appears automatically.
 const modelGlbs = import.meta.glob("../models/*/model.glb", {
   query: "?url", import: "default", eager: true,
 }) as Record<string, string>;
@@ -513,77 +587,136 @@ const modelDescs = import.meta.glob("../models/*/desc.txt", {
   query: "?raw", import: "default", eager: true,
 }) as Record<string, string>;
 
-interface ModelSource { name: string; glbUrl: string; desc: string; }
+interface Source { key: string; label: string; desc: string; glbUrl?: string; }
 const folderOf = (path: string) => path.split("/").slice(-2, -1)[0];
 
-const modelSources: ModelSource[] = Object.keys(modelGlbs)
-  .map((glbPath) => {
-    const folder = folderOf(glbPath);
-    const descPath = Object.keys(modelDescs).find(p => folderOf(p) === folder);
-    return {
-      name: folder,
-      glbUrl: modelGlbs[glbPath],
-      desc: descPath ? modelDescs[descPath] : "",
-    };
-  })
-  .sort((a, b) => a.name.localeCompare(b.name));
+const SPHERE_KEY = "__sphere__";
+const sources: Source[] = [
+  { key: SPHERE_KEY, label: "Sphere", desc: SPHERE_TEXT },   // plain sphere, no glb
+  ...Object.keys(modelGlbs)
+    .map((glbPath) => {
+      const folder = folderOf(glbPath);
+      const descPath = Object.keys(modelDescs).find(p => folderOf(p) === folder);
+      return {
+        key: folder,
+        label: folder,
+        glbUrl: modelGlbs[glbPath],
+        desc: descPath ? modelDescs[descPath] : SPHERE_TEXT,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label)),
+];
+const sourceByKey = (key: string) => sources.find(s => s.key === key)!;
 
-// load a model's GLB (cached after first fetch)
+// load a model's GLB (cached after first fetch); null target = plain sphere
 const modelCache = new Map<string, LoadedModel>();
-async function applyModel(src: ModelSource): Promise<void> {
-  let model = modelCache.get(src.name) ?? null;
+async function applyTarget(src: Source): Promise<void> {
+  if (!src.glbUrl) { loadedModel = null; return; }
+  let model = modelCache.get(src.key) ?? null;
   if (!model) {
     const buffer = await (await fetch(src.glbUrl)).arrayBuffer();
     model = await loadModel(buffer, SPHERE_R);
-    modelCache.set(src.name, model);
+    modelCache.set(src.key, model);
   }
   loadedModel = model;
 }
 
-// ---- build the horizontal source button bar: Sphere | <each model> ----
+// ---- active paragraph + the button list (every source EXCEPT the active) ----
 const sourceBar = document.getElementById("source-bar") as HTMLDivElement;
-const sourceButtons = new Map<string, HTMLButtonElement>();
+let activeKey = SPHERE_KEY;          // the source whose paragraph is shown
+let busy = false;                    // guard against overlapping swaps
 
-function makeSourceButton(key: string, label: string): HTMLButtonElement {
+const FADE_MS = 350;                 // must match the .source-btn opacity transition
+
+function buttonFor(key: string): HTMLButtonElement | null {
+  return sourceBar.querySelector(`button[data-key="${key}"]`);
+}
+
+// create a button (initially faded out); call fadeInButton next frame to show
+function createButton(src: Source): HTMLButtonElement {
   const btn = document.createElement("button");
-  btn.className = "source-btn";
-  btn.textContent = label;
-  btn.dataset.key = key;
-  btn.addEventListener("click", () => { void selectSource(key); });
-  sourceBar.appendChild(btn);
-  sourceButtons.set(key, btn);
+  btn.className = "source-btn faded";
+  btn.textContent = src.label;
+  btn.dataset.key = src.key;
+  btn.title = "Double-click to break into words";
+  btn.addEventListener("dblclick", () => { void swapTo(src.key); });
   return btn;
 }
 
-makeSourceButton("__sphere__", "Sphere");
-for (const src of modelSources) makeSourceButton(src.name, src.name);
+function fadeInButton(btn: HTMLButtonElement): void {
+  // next frame so the browser registers the faded start state and transitions
+  requestAnimationFrame(() => btn.classList.remove("faded"));
+}
 
-// load + animate the chosen source, and highlight its button
-async function selectSource(key: string): Promise<void> {
-  for (const [k, btn] of sourceButtons) btn.classList.toggle("active", k === key);
+// fade a button out, then remove it from the DOM
+function fadeOutButton(btn: HTMLButtonElement): Promise<void> {
+  btn.classList.add("faded");
+  return new Promise((resolve) => setTimeout(() => { btn.remove(); resolve(); }, FADE_MS));
+}
 
-  if (key === "__sphere__") {         // built-in sphere + built-in paragraph
-    loadedModel = null;
-    build(SPHERE_TEXT);
-    return;
-  }
-
-  const src = modelSources.find(s => s.name === key);
-  if (!src) return;
-  sourceButtons.forEach(b => (b.disabled = true));
-  try {
-    await applyModel(src);            // land glyphs on the model surface
-    build(src.desc || SPHERE_TEXT);   // animate the model's description
-  } catch (err) {
-    console.error("Failed to load model:", err);
-    loadedModel = null;
-    void selectSource("__sphere__");
-  } finally {
-    sourceButtons.forEach(b => (b.disabled = false));
+// initial render (no animation): one button per non-active source
+function renderButtons(): void {
+  sourceBar.replaceChildren();
+  for (const src of sources) {
+    if (src.key === activeKey) continue;
+    const btn = createButton(src);
+    btn.classList.remove("faded");   // shown immediately on first paint
+    sourceBar.appendChild(btn);
   }
 }
 
-// ---- Animate button: start the flight from the current paragraph ----
+// Swap the active paragraph with a button's source. Collapse and expand happen
+// SIMULTANEOUSLY as two layers: the current paragraph gathers into a new button
+// at the rear, while the double-clicked button's words break apart into the new
+// paragraph — both at once.
+const MORPH_MS = 700;
+async function swapTo(key: string): Promise<void> {
+  if (busy || key === activeKey) return;
+  busy = true;
+  animating = false;                 // morph-driven, not flight-driven
+  try {
+    const oldKey = activeKey;
+    const clicked = buttonFor(key);
+    const expandAnchor = buttonAnchor(clicked);   // new paragraph springs from here
+
+    // the old source reappears as a button at the rear (the collapse target)
+    const reborn = createButton(sourceByKey(oldKey));
+    sourceBar.appendChild(reborn);
+    fadeInButton(reborn);
+    const collapseAnchor = buttonAnchor(reborn);
+
+    // collapsing layer: rebuild the CURRENT paragraph anchored at the rear
+    // button (no visual change at morph=1), keeping the old target surface
+    disposeLayer(currentLayer);
+    const collapsing = makeLayer(currentText, collapseAnchor, 1);
+
+    // expanding layer: the NEW paragraph on its target surface, gathered at the
+    // clicked button, starting collapsed
+    activeKey = key;
+    if (clicked) void fadeOutButton(clicked);
+    const newSrc = sourceByKey(key);
+    await applyTarget(newSrc);        // switch target surface for the new layer
+    const expanding = makeLayer(newSrc.desc, expandAnchor, 0);
+    currentText = newSrc.desc;
+    currentLayer = expanding;
+
+    // run both morphs at the same time, then drop the collapsed layer
+    await Promise.all([
+      morphHolder(collapsing.uMorph, 0, MORPH_MS),
+      morphHolder(expanding.uMorph, 1, MORPH_MS),
+    ]);
+    disposeLayer(collapsing);
+  } catch (err) {
+    console.error("Swap failed:", err);
+    if (currentLayer) currentLayer.uMorph.value = 1;
+  } finally {
+    busy = false;
+  }
+}
+
+renderButtons();
+
+// ---- Figuration button: build the active paragraph onto its shape ----
 const animateButton = document.getElementById("animate-btn") as HTMLButtonElement;
 animateButton.addEventListener("click", startAnimation);
 
@@ -594,13 +727,13 @@ const panel = document.getElementById("panel") as HTMLDivElement;
 
 traceCheck.addEventListener("change", () => {
   settings.showTraces = traceCheck.checked;
-  if (traceLines) traceLines.visible = settings.showTraces;
+  if (currentLayer) currentLayer.trace.visible = settings.showTraces;
 });
 textboxCheck.addEventListener("change", () => {
   panel.classList.toggle("hidden", !textboxCheck.checked);
 });
 
-// kick off — size the viewport, then start on the built-in sphere paragraph
+// kick off — size the viewport, then build the default Sphere paragraph
 resize();
-void selectSource("__sphere__");
+build(sourceByKey(activeKey).desc);
 requestAnimationFrame(animate);

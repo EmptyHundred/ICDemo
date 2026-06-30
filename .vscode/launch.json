@@ -8,6 +8,14 @@
       "url": "http://localhost:5173",
       "webRoot": "${workspaceFolder}/CharacterSurface",
       "preLaunchTask": "npm: dev"
+    },
+    {
+      "name": "Dev Hourglass",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5174",
+      "webRoot": "${workspaceFolder}/Hourglass",
+      "preLaunchTask": "npm: dev (Hourglass)"
     }
   ]
 }

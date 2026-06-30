@@ -22,6 +22,28 @@
         "reveal": "always",
         "panel": "dedicated"
       }
+    },
+    {
+      "label": "npm: dev (Hourglass)",
+      "type": "npm",
+      "script": "dev",
+      "path": "Hourglass",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*Local:.*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }

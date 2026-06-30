@@ -1,0 +1,8 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: #2f6fd6;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+#stage { display: block; width: 100vw; height: 100vh; touch-action: none; }

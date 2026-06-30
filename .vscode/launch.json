@@ -7,7 +7,8 @@
       "request": "launch",
       "url": "http://10.10.10.8:5173",
       "webRoot": "${workspaceFolder}/CharacterSurface",
-      "preLaunchTask": "npm: dev"
+      "preLaunchTask": "npm: dev",
+      "postDebugTask": "kill: dev"
     },
     {
       "name": "Dev Hourglass",
@@ -15,7 +16,8 @@
       "request": "launch",
       "url": "http://localhost:5174",
       "webRoot": "${workspaceFolder}/Hourglass",
-      "preLaunchTask": "npm: dev (Hourglass)"
+      "preLaunchTask": "npm: dev (Hourglass)",
+      "postDebugTask": "kill: dev (Hourglass)"
     }
   ]
 }

@@ -44,6 +44,24 @@
         "reveal": "always",
         "panel": "dedicated"
       }
+    },
+    {
+      "label": "kill: dev",
+      "detail": "Free port 5173 (CharacterSurface dev server)",
+      "type": "shell",
+      "command": "Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; exit 0",
+      "options": { "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
+      "presentation": { "reveal": "silent", "panel": "shared", "close": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "kill: dev (Hourglass)",
+      "detail": "Free port 5174 (Hourglass dev server)",
+      "type": "shell",
+      "command": "Get-NetTCPConnection -LocalPort 5174 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; exit 0",
+      "options": { "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
+      "presentation": { "reveal": "silent", "panel": "shared", "close": true },
+      "problemMatcher": []
     }
   ]
 }

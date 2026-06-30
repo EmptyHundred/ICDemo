@@ -15,7 +15,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".*VITE.*",
-          "endsPattern": ".*Local:.*"
+          "endsPattern": ".*(Local|Network):.*"
         }
       },
       "presentation": {
@@ -37,7 +37,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".*VITE.*",
-          "endsPattern": ".*Local:.*"
+          "endsPattern": ".*(Local|Network):.*"
         }
       },
       "presentation": {

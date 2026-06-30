@@ -5,7 +5,7 @@
       "name": "Dev CharacterSurface",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:5173",
+      "url": "http://10.10.10.8:5173",
       "webRoot": "${workspaceFolder}/CharacterSurface",
       "preLaunchTask": "npm: dev"
     },

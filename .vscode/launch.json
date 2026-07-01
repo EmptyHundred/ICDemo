@@ -14,7 +14,7 @@
       "name": "Dev Hourglass",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:5174",
+      "url": "http://10.10.10.8:5174",
       "webRoot": "${workspaceFolder}/Hourglass",
       "preLaunchTask": "npm: dev (Hourglass)",
       "postDebugTask": "kill: dev (Hourglass)"

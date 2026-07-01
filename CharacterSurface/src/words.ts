@@ -13,16 +13,20 @@ export const ADJECTIVES = [
   "jagged", "smooth", "ephemeral", "vast", "narrow", "buoyant", "leaden",
 ];
 
+// Nouns are concrete PROPS (small tangible objects) and CHARACTERS (people /
+// creatures / roles) — not large concepts or landscapes.
 export const NOUNS = [
-  "horizon", "ember", "lantern", "river", "fable", "harbor", "thicket",
-  "meadow", "cipher", "echo", "vessel", "anchor", "willow", "comet",
-  "marrow", "prism", "hollow", "current", "beacon", "garden", "thunder",
-  "feather", "mirror", "orchard", "tide", "spindle", "canyon",
-  "ribbon", "drift", "compass", "lattice", "harvest", "cinder", "summit",
-  "meadow", "quarry", "hearth", "willow", "furrow", "glacier", "cavern",
-  "estuary", "delta", "ridge", "hollow", "grove", "shoal", "cove", "brook",
-  "meridian", "thistle", "bramble", "reef", "dune", "trellis", "arbor",
-  "lagoon", "cascade", "plateau", "fjord", "geyser", "isthmus", "steppe",
-  "ravine", "cliff", "moor", "fen", "spire", "vault", "cinder", "monolith",
-  "aurora", "zephyr", "solstice", "equinox", "nebula", "quasar", "meander",
+  // props / objects
+  "lantern", "key", "locket", "compass", "quill", "dagger", "goblet",
+  "candle", "mirror", "ledger", "spyglass", "pocketwatch", "inkwell",
+  "ribbon", "thimble", "marble", "coin", "brooch", "flask", "matchbox",
+  "teacup", "violin", "umbrella", "spectacles", "trinket", "medallion",
+  "scroll", "hourglass", "buckle", "whistle", "feather", "needle", "bell",
+  "map", "crown", "mask", "cauldron", "satchel", "figurine", "domino",
+  "kite", "puppet", "clockwork", "music-box", "compass-rose", "birdcage",
+  // characters / creatures / roles
+  "wanderer", "jester", "captain", "hermit", "tinker", "sailor", "witch",
+  "orphan", "peddler", "knight", "seamstress", "clockmaker", "acrobat",
+  "fox", "raven", "moth", "hound", "sparrow", "beetle", "owl", "cat",
+  "twins", "stranger", "widow", "apprentice", "cartographer", "sentinel",
 ];
